@@ -36,7 +36,7 @@ async def procesar(
         # Consulta al modelo de Groq
         chat_completion = client.chat.completions.create(
             messages=mensajes,
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
         )
         
         respuesta_texto = chat_completion.choices[0].message.content
