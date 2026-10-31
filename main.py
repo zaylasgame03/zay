@@ -1,59 +1,42 @@
 import os
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import FileResponse
-from google import genai
+from groq import Groq
 import edge_tts
 
 app = FastAPI()
 
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")
-client = genai.Client(api_key=GENAI_API_KEY)
+# Inicializar el cliente con la API Key de Groq
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=GROQ_API_KEY)
 
 historial_conversacion = []
-frame_actual_juego = "frame_juego.png"
 
 SYSTEM_PROMPT = """Eres zay, el asistente personal de IA definitivo.
 Eres leal, elegante, eficiente y ligeramente sarcástico.
 Pero tambien eres alguien divertido.
 Respondes siempre en español de forma breve, concisa y dirigiéndote al usuario como 'zaylas'.
-Si recibes una imagen de un videojuego o pantalla, analiza la situación rápidamente y da consejos estratégicos en tiempo real."""
-
-@app.post("/stream_frame")
-async def recibir_frame(frame: UploadFile = File(...)):
-    contenido = await frame.read()
-    with open(frame_actual_juego, "wb") as f:
-        f.write(contenido)
-    return {"status": "ok"}
+Si el usuario hace una consulta, analiza la situación rápidamente y da respuestas útiles y breves."""
 
 @app.post("/procesar")
-async def procesar(prompt: str = Form(...), file: UploadFile = File(None), vision: str = Form("false"), dispositivo: str = Form("desconocido")):
+async def procesar(prompt: str = Form(...), dispositivo: str = Form("desconocido")):
     global historial_conversacion
     
-    historial_conversacion.append(f"Usuario ({dispositivo}): {prompt}")
-    contexto = "\n".join(historial_conversacion[-8:])
+    historial_conversacion.append({"role": "user", "content": f"({dispositivo}): {prompt}"})
     
-    prompt_completo = f"{SYSTEM_PROMPT}\n\nHistorial reciente:\n{contexto}\n\nMensaje actual de {dispositivo}: {prompt}"
-    archivos_gemini = [prompt_completo]
-    
-    # Manejo del archivo enviado directamente por Termux
-    if file:
-        contenido_foto = await file.read()
-        with open("foto_temp.jpg", "wb") as f:
-            f.write(contenido_foto)
-        imagen_subida = client.files.upload(file="foto_temp.jpg")
-        archivos_gemini.append(imagen_subida)
-    elif vision == "true" and os.path.exists(frame_actual_juego):
-        imagen_subida = client.files.upload(file=frame_actual_juego)
-        archivos_gemini.append(imagen_subida)
+    # Mantenemos las últimas 8 interacciones en el historial
+    mensajes = [{"role": "system", "content": SYSTEM_PROMPT}] + historial_conversacion[-8:]
 
-    # Actualizado al modelo soportado
-    response = client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=archivos_gemini
+    # Llamada al modelo gratuito de Groq (Llama 3 70B)
+    chat_completion = client.chat.completions.create(
+        messages=mensajes,
+        model="llama-3.3-70b-versatile",
     )
-    respuesta_texto = response.text
-    historial_conversacion.append(f"ZAY: {respuesta_texto}")
+    
+    respuesta_texto = chat_completion.choices[0].message.content
+    historial_conversacion.append({"role": "assistant", "content": respuesta_texto})
 
+    # Generación del archivo de audio con edge-tts
     archivo_audio = "respuesta.mp3"
     communicate = edge_tts.Communicate(respuesta_texto, "es-ES-AlvaroNeural")
     await communicate.save(archivo_audio)
