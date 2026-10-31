@@ -1,14 +1,13 @@
 import os
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from groq import Groq
 import edge_tts
 
 app = FastAPI()
 
-# Inicializar el cliente con la API Key de Groq
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 historial_conversacion = []
 
@@ -19,26 +18,37 @@ Respondes siempre en español de forma breve, concisa y dirigiéndote al usuario
 Si el usuario hace una consulta, analiza la situación rápidamente y da respuestas útiles y breves."""
 
 @app.post("/procesar")
-async def procesar(prompt: str = Form(...), dispositivo: str = Form("desconocido")):
+async def procesar(
+    prompt: str = Form(...),
+    file: UploadFile = File(None),
+    vision: str = Form("false"),
+    dispositivo: str = Form("desconocido")
+):
     global historial_conversacion
     
-    historial_conversacion.append({"role": "user", "content": f"({dispositivo}): {prompt}"})
-    
-    # Mantenemos las últimas 8 interacciones en el historial
-    mensajes = [{"role": "system", "content": SYSTEM_PROMPT}] + historial_conversacion[-8:]
+    if not client:
+        return JSONResponse(status_code=500, content={"error": "GROQ_API_KEY no está configurada en Render."})
 
-    # Llamada al modelo gratuito de Groq (Llama 3 70B)
-    chat_completion = client.chat.completions.create(
-        messages=mensajes,
-        model="llama-3.3-70b-versatile",
-    )
-    
-    respuesta_texto = chat_completion.choices[0].message.content
-    historial_conversacion.append({"role": "assistant", "content": respuesta_texto})
+    try:
+        historial_conversacion.append({"role": "user", "content": f"({dispositivo}): {prompt}"})
+        mensajes = [{"role": "system", "content": SYSTEM_PROMPT}] + historial_conversacion[-8:]
 
-    # Generación del archivo de audio con edge-tts
-    archivo_audio = "respuesta.mp3"
-    communicate = edge_tts.Communicate(respuesta_texto, "es-ES-AlvaroNeural")
-    await communicate.save(archivo_audio)
+        # Consulta al modelo de Groq
+        chat_completion = client.chat.completions.create(
+            messages=mensajes,
+            model="llama-3.3-70b-versatile",
+        )
+        
+        respuesta_texto = chat_completion.choices[0].message.content
+        historial_conversacion.append({"role": "assistant", "content": respuesta_texto})
 
-    return FileResponse(archivo_audio, media_type="audio/mpeg")
+        # Generar audio con edge-tts
+        archivo_audio = "respuesta.mp3"
+        communicate = edge_tts.Communicate(respuesta_texto, "es-ES-AlvaroNeural")
+        await communicate.save(archivo_audio)
+
+        return FileResponse(archivo_audio, media_type="audio/mpeg")
+
+    except Exception as e:
+        print(f"Error interno: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
