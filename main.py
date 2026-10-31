@@ -11,12 +11,11 @@ client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 historial_conversacion = []
 
-# Lista de modelos candidatos en orden de preferencia
+# Lista con los nombres exactos de los modelos activos en Groq
 MODELOS_GROQ = [
-    "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
-    "llama3-8b-8192",
-    "mixtral-8x7b-32768"
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b"
 ]
 
 SYSTEM_PROMPT = """Eres zay, el asistente personal de IA definitivo.
@@ -43,7 +42,6 @@ async def procesar(
     respuesta_texto = None
     ultimo_error = None
 
-    # Probar modelos disponibles hasta que uno responda
     for modelo in MODELOS_GROQ:
         try:
             chat_completion = client.chat.completions.create(
@@ -63,7 +61,6 @@ async def procesar(
 
     historial_conversacion.append({"role": "assistant", "content": respuesta_texto})
 
-    # Generar audio con edge-tts
     archivo_audio = "respuesta.mp3"
     communicate = edge_tts.Communicate(respuesta_texto, "es-ES-AlvaroNeural")
     await communicate.save(archivo_audio)
