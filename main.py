@@ -35,21 +35,20 @@ async def procesar(prompt: str = Form(...), file: UploadFile = File(None), visio
     prompt_completo = f"{SYSTEM_PROMPT}\n\nHistorial reciente:\n{contexto}\n\nMensaje actual de {dispositivo}: {prompt}"
     archivos_gemini = [prompt_completo]
     
-    # 1. Soporte si el cliente sube la foto directamente en la petición (file)
+    # Manejo del archivo enviado directamente por Termux
     if file:
         contenido_foto = await file.read()
         with open("foto_temp.jpg", "wb") as f:
             f.write(contenido_foto)
         imagen_subida = client.files.upload(file="foto_temp.jpg")
         archivos_gemini.append(imagen_subida)
-    # 2. O si usa el stream previo (vision == "true")
     elif vision == "true" and os.path.exists(frame_actual_juego):
         imagen_subida = client.files.upload(file=frame_actual_juego)
         archivos_gemini.append(imagen_subida)
 
-    # Cambio del modelo deprecado gemini-1.5-flash por el modelo soportado
+    # Actualizado al modelo soportado
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-3.8-flash',
         contents=archivos_gemini
     )
     respuesta_texto = response.text
